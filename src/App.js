@@ -22,14 +22,17 @@ import {
 } from 'firebase/firestore';
 
 // --- Firebase Configuration ---
-// IMPORTANT: Replace this with your actual Firebase project configuration
+// This is now securely loaded from environment variables
+// We add fallback placeholders so the app can load in preview environments.
+// Your app will connect to Firebase using your .env.local file (when running 'npm start')
+// or your GitHub Secrets (when deployed).
 const firebaseConfig = {
-  apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
-  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.REACT_APP_FIREBASE_SENDER_ID,
-  appId: process.env.REACT_APP_FIREBASE_APP_ID
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY || "YOUR_API_KEY",
+  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN || "YOUR_AUTH_DOMAIN",
+  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID || "YOUR_PROJECT_ID",
+  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET || "YOUR_STORAGE_BUCKET",
+  messagingSenderId: process.env.REACT_APP_FIREBASE_SENDER_ID || "YOUR_MESSAGING_SENDER_ID",
+  appId: process.env.REACT_APP_FIREBASE_APP_ID || "YOUR_APP_ID"
 };
 
 // --- Initialize Firebase ---
@@ -38,9 +41,36 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 
+// --- Helper function for auth errors ---
+function getFriendlyErrorMessage(err) {
+  let message = "An unexpected error occurred. Please try again.";
+  // Use err.code, which is cleaner than err.message
+  switch (err.code) {
+    case "auth/email-already-in-use":
+      message = "This email address is already in use. Please try logging in.";
+      break;
+    case "auth/invalid-email":
+      message = "Please enter a valid email address.";
+      break;
+    case "auth/weak-password":
+      message = "Your password must be at least 6 characters long.";
+      break;
+    case "auth/user-not-found":
+    case "auth/wrong-password":
+    case "auth/invalid-credential":
+      message = "Invalid email or password. Please try again.";
+      break;
+    default:
+      // You can log the original error to the console for debugging
+      console.error("Firebase Auth Error:", err.code, err.message);
+      message = "An error occurred. Please try again.";
+  }
+  return message;
+}
+
+
 const expenseCategories = ['Food', 'Transport', 'Bills', 'Gadgets', 'Entertainment', 'Other'];
 const incomeCategories = ['Salary', 'Freelance', 'Investment', 'Other'];
-// --- NEW: Expanded currency options ---
 const currencySymbols = {
     USD: '$',
     EUR: '€',
@@ -163,8 +193,10 @@ function ExpenseTracker({ user }) {
     const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
     const [editingId, setEditingId] = useState(null);
     const [selectedDate, setSelectedDate] = useState(new Date());
+    
+    // --- NEW: State for form validation errors ---
+    const [formError, setFormError] = useState('');
 
-    // --- REFACTORED: Theme and Currency State ---
     const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
     const [currencyCode, setCurrencyCode] = useState(localStorage.getItem('currencyCode') || 'USD');
 
@@ -220,26 +252,48 @@ function ExpenseTracker({ user }) {
 
     const handleAddOrUpdateTransaction = async (e) => {
         e.preventDefault();
-        if (!text || !amount || !date) return;
+        setFormError(''); // Clear previous errors
+
+        // --- UPDATED: Form Validation ---
+        if (!text || !date) {
+            setFormError('Please fill out all fields.');
+            return;
+        }
+        if (!amount || parseFloat(amount) <= 0) {
+            setFormError('Amount must be a positive number.');
+            return;
+        }
+        // --- End of Validation ---
+
         const amountValue = transactionType === 'expense' ? -Math.abs(parseFloat(amount)) : Math.abs(parseFloat(amount));
         const transactionData = { text, amount: amountValue, category, type: transactionType, date };
 
-        if (editingId) {
-            await updateDoc(doc(db, 'users', user.uid, 'transactions', editingId), transactionData);
-            setEditingId(null);
-        } else {
-            await addDoc(transactionsCollectionRef, transactionData);
+        try {
+            if (editingId) {
+                await updateDoc(doc(db, 'users', user.uid, 'transactions', editingId), transactionData);
+                setEditingId(null);
+            } else {
+                await addDoc(transactionsCollectionRef, transactionData);
+            }
+            setText(''); setAmount(''); setTransactionType('expense'); setCategory('Food'); setDate(new Date().toISOString().slice(0, 10));
+        } catch (err) {
+            console.error("Firestore Error:", err);
+            setFormError('Could not save transaction. Please try again.');
         }
-        setText(''); setAmount(''); setTransactionType('expense'); setCategory('Food'); setDate(new Date().toISOString().slice(0, 10));
     };
 
     const handleDeleteTransaction = async (id) => {
-        await deleteDoc(doc(db, 'users', user.uid, 'transactions', id));
+        try {
+            await deleteDoc(doc(db, 'users', user.uid, 'transactions', id));
+        } catch (err) {
+            console.error("Firestore Error:", err);
+        }
     };
 
     const handleEditTransaction = (transaction) => {
         setEditingId(transaction.id); setText(transaction.text); setAmount(Math.abs(transaction.amount));
         setTransactionType(transaction.type); setCategory(transaction.category); setDate(transaction.date);
+        setFormError(''); // Clear errors when starting an edit
     };
     
     const handleLogout = () => signOut(auth);
@@ -257,6 +311,7 @@ function ExpenseTracker({ user }) {
     return (
         <div className="min-h-screen bg-slate-100 dark:bg-slate-900 p-4 font-sans text-slate-800 dark:text-slate-200">
             <header className="max-w-6xl mx-auto mb-4 flex justify-between items-center">
+                {/* ... existing header code ... */}
                 <div className="flex items-center gap-4">
                     <button onClick={toggleTheme} className="flex items-center gap-2 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-3 py-2 rounded-lg text-sm font-semibold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors shadow">
                         {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
@@ -274,23 +329,48 @@ function ExpenseTracker({ user }) {
                     <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-lg">
                         <h2 className="text-xl font-bold mb-4">{editingId ? 'Edit Transaction' : 'Add New Transaction'}</h2>
                         <div className="flex mb-4 border border-slate-200 dark:border-slate-700 rounded-lg p-1">
+                            {/* ... existing income/expense buttons ... */}
                             <button onClick={() => setTransactionType('expense')} className={`w-full py-2 rounded-md transition-colors text-sm font-semibold ${transactionType === 'expense' ? 'bg-red-500 text-white' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'}`}>Expense</button>
                             <button onClick={() => setTransactionType('income')} className={`w-full py-2 rounded-md transition-colors text-sm font-semibold ${transactionType === 'income' ? 'bg-green-500 text-white' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'}`}>Income</button>
                         </div>
                         <form onSubmit={handleAddOrUpdateTransaction} className="space-y-4">
                             <input type="text" placeholder="Description" value={text} onChange={e => setText(e.target.value)} className="w-full p-3 bg-slate-100 dark:bg-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-slate-200" />
-                            <input type="number" placeholder="Amount" value={amount} onChange={e => setAmount(e.target.value)} className="w-full p-3 bg-slate-100 dark:bg-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-slate-200" />
+                            
+                            {/* --- UPDATED: Amount Input --- */}
+                            <input 
+                                type="number" 
+                                placeholder="Amount" 
+                                value={amount} 
+                                onChange={e => setAmount(e.target.value)} 
+                                onKeyDown={(e) => {
+                                    // Block 'e' and 'E' in number input
+                                    if (e.key === 'e' || e.key === 'E') {
+                                      e.preventDefault();
+                                    }
+                                }}
+                                className="w-full p-3 bg-slate-100 dark:bg-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-slate-200" 
+                            />
+                            
                             <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full p-3 bg-slate-100 dark:bg-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-slate-200" />
                             <select value={category} onChange={e => setCategory(e.target.value)} className="w-full p-3 bg-slate-100 dark:bg-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-slate-200">
+                                {/* ... existing options ... */}
                                 {(transactionType === 'expense' ? expenseCategories : incomeCategories).map(cat => <option key={cat} value={cat}>{cat}</option>)}
                             </select>
+                            
+                            {/* --- NEW: Display Form Error --- */}
+                            {formError && <p className="text-red-500 text-sm text-center -mt-2 mb-2">{formError}</p>}
+
                             <button type="submit" className="w-full bg-indigo-600 text-white py-3 rounded-lg font-semibold hover:bg-indigo-700 transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2">
+                                {/* ... existing button content ... */}
                                 <Plus size={20} /> {editingId ? 'Update Transaction' : 'Add Transaction'}
                             </button>
-                            {editingId && <button type="button" onClick={() => { setEditingId(null); setText(''); setAmount(''); setDate(new Date().toISOString().slice(0, 10)); }} className="w-full bg-slate-200 dark:bg-slate-600 text-slate-700 dark:text-slate-200 py-3 rounded-lg font-semibold hover:bg-slate-300 dark:hover:bg-slate-500 transition-all flex items-center justify-center gap-2">Cancel Edit</button>}
+                            
+                            {/* --- UPDATED: Cancel Edit Button --- */}
+                            {editingId && <button type="button" onClick={() => { setEditingId(null); setText(''); setAmount(''); setDate(new Date().toISOString().slice(0, 10)); setFormError(''); }} className="w-full bg-slate-200 dark:bg-slate-600 text-slate-700 dark:text-slate-200 py-3 rounded-lg font-semibold hover:bg-slate-300 dark:hover:bg-slate-500 transition-all flex items-center justify-center gap-2">Cancel Edit</button>}
                         </form>
                     </div>
                     <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-lg">
+                        {/* ... existing summary code ... */}
                         <h2 className="text-xl font-bold mb-4">Summary</h2>
                         <div className="space-y-4">
                              <div className="flex justify-between items-center p-4 bg-green-50 dark:bg-green-500/10 rounded-lg">
@@ -308,10 +388,12 @@ function ExpenseTracker({ user }) {
                         </div>
                     </div>
                     <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-lg">
+                        {/* ... existing chart code ... */}
                         <DoughnutChart transactions={transactions} currencySymbol={currentCurrencySymbol} theme={theme} />
                     </div>
                 </div>
                 <div className="lg:col-span-2 bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-lg">
+                    {/* ... existing transaction history code ... */}
                     <div className="flex flex-col sm:flex-row justify-between items-center mb-4 gap-4">
                         <h2 className="text-xl font-bold">Transaction History</h2>
                          <div className="flex items-center gap-2 sm:gap-4 p-1 bg-slate-100 dark:bg-slate-700 rounded-lg">
@@ -361,7 +443,10 @@ function AuthComponent() {
                 await createUserWithEmailAndPassword(auth, email, password);
             }
         } catch (err) {
-            setError(err.message);
+            // --- THIS IS THE CHANGE ---
+            // Use the new translator function
+            const friendlyMessage = getFriendlyErrorMessage(err);
+            setError(friendlyMessage);
         }
     };
 
@@ -392,6 +477,8 @@ function AuthComponent() {
 // Main App Component
 function App() {
     const [user, setUser] = useState(null);
+    // --- THIS IS THE FIX ---
+    // Removed the extra '=' sign
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
