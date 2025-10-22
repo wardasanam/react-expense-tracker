@@ -424,7 +424,9 @@ function ExpenseTracker({ user }) {
 // Authentication Component
 function AuthComponent() {
     // This component will also respect the theme from localStorage
-    const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
+    // --- THIS IS THE FIX ---
+    // Removed 'setTheme' as it's not used in this component, which caused the build error.
+    const [theme] = useState(localStorage.getItem('theme') || 'light');
     useEffect(() => {
         if (theme === 'dark') document.documentElement.classList.add('dark');
         else document.documentElement.classList.remove('dark');
@@ -507,4 +509,7 @@ function App() {
 }
 
 export default App;
+
+
+
 
