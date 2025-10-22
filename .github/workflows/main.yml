@@ -41,7 +41,7 @@ jobs:
           REACT_APP_FIREBASE_SENDER_ID: ${{ secrets.REACT_APP_FIREBASE_SENDER_ID }}
           REACT_APP_FIREBASE_APP_ID: ${{ secrets.REACT_APP_FIREBASE_APP_ID }}
           # We also must tell it the homepage URL from your package.json
-          PUBLIC_URL: "https://wardasanara.github.io/react-expense-tracker"
+          PUBLIC_URL: "https://wardasanam.github.io/react-expense-tracker"
 
       # 5. Sets up GitHub Pages for deployment
       - name: Setup Pages
