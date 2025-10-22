@@ -480,8 +480,8 @@ function AuthComponent() {
 function App() {
     const [user, setUser] = useState(null);
     // --- THIS IS THE FIX ---
-    // Removed 'setLoading' as it was unused and causing a warning.
-    const [loading] = useState(true);
+    // Restoring 'setLoading' as it is required by the component.
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -507,5 +507,4 @@ function App() {
 }
 
 export default App;
-
 
