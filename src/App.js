@@ -229,7 +229,9 @@ function ExpenseTracker({ user }) {
             setTransactions(transactionsData);
         });
         return () => unsubscribe();
-    }, [user.uid]);
+    // --- THIS IS THE FIX ---
+    // Added 'transactionsCollectionRef' to the dependency array as requested by the error.
+    }, [user.uid, transactionsCollectionRef]);
 
     const { total, income, expense } = useMemo(() => {
         const amounts = transactions.map(t => t.amount);
@@ -478,8 +480,8 @@ function AuthComponent() {
 function App() {
     const [user, setUser] = useState(null);
     // --- THIS IS THE FIX ---
-    // Removed the extra '=' sign
-    const [loading, setLoading] = useState(true);
+    // Removed 'setLoading' as it was unused and causing a warning.
+    const [loading] = useState(true);
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -505,4 +507,5 @@ function App() {
 }
 
 export default App;
+
 
